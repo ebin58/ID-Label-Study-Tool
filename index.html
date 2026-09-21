@@ -10,7 +10,9 @@
   9.) Label making improvements
   10.) Broadens file discovery so Ipad can recognize the file
   11.) Updated so that you can draw the boxes on iPad
+  12.) Added a box saying draw boxes so that you can draw boxes. Then click on it again to exit out of the draw mode
 -->
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -152,7 +154,7 @@
   }
   #mainCanvas {
     display: block;
-    cursor: crosshair;
+    cursor: default;
     /* Without this, iOS Safari treats a finger-drag on the canvas as a
        page scroll/pan gesture instead of handing it to our drawing
        code, so box-drawing never gets a continuous drag on touch
@@ -161,6 +163,7 @@
     touch-action: none;
   }
   #mainCanvas.study-cursor { cursor: pointer; }
+  #mainCanvas.draw-cursor { cursor: crosshair; }
 
   #statusBar {
     padding: 6px 10px;
@@ -196,6 +199,10 @@
 
     <button id="editModeBtn" class="toggle active">Edit boxes</button>
     <button id="studyModeBtn" class="toggle">Study mode</button>
+
+    <div class="sep"></div>
+
+    <button id="drawModeBtn" class="toggle" title="Turn on, then drag on the image to draw a box. Turn off to browse/tap without accidentally drawing.">Draw boxes</button>
 
     <div class="sep"></div>
 
@@ -662,6 +669,7 @@
     removeSelectedFoldersBtn: document.getElementById("removeSelectedFoldersBtn"),
     editModeBtn: document.getElementById("editModeBtn"),
     studyModeBtn: document.getElementById("studyModeBtn"),
+    drawModeBtn: document.getElementById("drawModeBtn"),
     autoDetectBtn: document.getElementById("autoDetectBtn"),
     autoDetectAllBtn: document.getElementById("autoDetectAllBtn"),
     sensitivitySlider: document.getElementById("sensitivitySlider"),
@@ -690,6 +698,13 @@
     cards: [],        // { name, dataURL, img, width, height, boxes: [[x,y,w,h],...], revealed: Set }
     currentIndex: -1,
     mode: "edit",      // "edit" | "study"
+    // Whether dragging on the canvas currently creates a new box. Kept
+    // as an explicit toggle (the "Draw boxes" button) rather than
+    // always-on, so a tap or drag while just browsing an image in Edit
+    // mode - especially with a finger on a touchscreen, where taps are
+    // less precise than a mouse click - can't accidentally create a
+    // stray box.
+    drawMode: false,
     // Each card carries its own `revealed` Set (which box indices are
     // uncovered in Study Mode) so progress persists as you move between
     // cards - see loadImageFile / deck-load below for where it's set.
@@ -874,6 +889,7 @@
 
     const card = currentCard();
     els.canvas.classList.toggle("study-cursor", state.mode === "study");
+    els.canvas.classList.toggle("draw-cursor", state.mode === "edit" && state.drawMode);
 
     if (!card) {
       ctx.fillStyle = "#666666";
@@ -1221,12 +1237,23 @@
     els.editModeBtn.classList.toggle("active", mode === "edit");
     els.studyModeBtn.classList.toggle("active", mode === "study");
     els.studyToolbar.style.display = mode === "study" ? "flex" : "none";
+    els.drawModeBtn.disabled = mode !== "edit";
+    if (mode !== "edit") {
+      state.drawMode = false;
+      els.drawModeBtn.classList.remove("active");
+    }
     state.dragStart = null;
     state.dragCurrent = null;
     render();
   }
   els.editModeBtn.addEventListener("click", () => setMode("edit"));
   els.studyModeBtn.addEventListener("click", () => setMode("study"));
+
+  els.drawModeBtn.addEventListener("click", () => {
+    state.drawMode = !state.drawMode;
+    els.drawModeBtn.classList.toggle("active", state.drawMode);
+    render();
+  });
 
   els.autoDetectBtn.addEventListener("click", () => {
     const card = currentCard();
@@ -1471,7 +1498,9 @@
       return;
     }
 
-    // edit mode
+    // edit mode - tapping an existing box always deletes it, whether or
+    // not Draw mode is on (deleting isn't the accidental-creation risk
+    // Draw mode guards against).
     if (hit !== null) {
       card.boxes.splice(hit, 1);
       refreshCardList();
@@ -1479,6 +1508,10 @@
       scheduleAutosave();
       return;
     }
+    // Only start a new-box drag when Draw mode is on; otherwise a tap
+    // or drag on empty canvas does nothing, so browsing an image in
+    // Edit mode can't accidentally leave a stray box behind.
+    if (!state.drawMode) return;
     state.dragStart = pos;
     state.dragCurrent = pos;
   });
