@@ -1,0 +1,1536 @@
+<!--
+  1.) This version allows you to upload folders and save them to a deck as well.
+  2.) Allows you to hide all the labels from every picture at the same time
+  3.) Picture label hiding update
+  4.) Adds arrows on the left hand side so you can minimize the folder
+  5.) Allows you to move forward and backward even when not in study mode
+  6.) When you click the box, the label is easier to see
+  7.) Allows you to delete multiple folders
+  8.) Lets you see the highlighted card on the left
+  9.) Label making improvements
+-->
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Label Deck Studio</title>
+<style>
+  :root {
+    --toolbar-bg: #f0f0f0;
+    --border: #cfcfcf;
+    --accent: #1f6fb2;
+    --accent-fill: rgba(31,111,178,0.27);
+    --cover: #2c3e50;
+    --canvas-bg: #dddddd;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #toolbar, #studyToolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  #studyToolbar { display: none; border-top: 1px solid var(--border); }
+
+  button {
+    font-size: 13px;
+    padding: 6px 12px;
+    border: 1px solid #b5b5b5;
+    background: #ffffff;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { background: #f2f2f2; }
+  button:active { background: #e6e6e6; }
+  button.toggle.active {
+    background: #ffffff;
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    font-weight: 600;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .sep {
+    width: 1px; align-self: stretch; background: var(--border);
+    margin: 0 6px;
+  }
+  .toolbar-label { color: #444; margin-left: 4px; }
+
+  #sensitivitySlider { width: 130px; }
+
+  #body { flex: 1; display: flex; min-height: 0; }
+
+  #sidebar {
+    width: 230px;
+    min-width: 230px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #sidebarHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 10px 10px 4px 10px;
+  }
+  #sidebarHeader h3 { margin: 0; font-size: 13px; font-weight: 700; }
+  #sidebarHeaderBtns { display: flex; gap: 4px; }
+  .small-btn {
+    font-size: 10.5px;
+    padding: 2px 6px;
+    border: 1px solid #c8c8c8;
+    background: #fff;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #555;
+  }
+  .small-btn:hover { background: #f0f0f0; }
+  #cardList { flex: 1; overflow-y: auto; padding: 6px; }
+  .card-item {
+    padding: 6px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-item:hover { background: #f0f0f0; }
+  .card-item.selected { background: var(--accent); color: #fff; }
+  .folder-item {
+    padding: 6px 8px 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+  }
+  .folder-item:hover { background: #f0f0f0; }
+  .folder-item .twisty {
+    display: inline-block;
+    width: 10px;
+    font-weight: 400;
+  }
+  .folder-item .folder-remove-check {
+    margin-right: 4px;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+  #sidebarHint {
+    padding: 0 10px 4px 10px;
+    font-size: 10.5px;
+    color: #888;
+    line-height: 1.3;
+  }
+
+  #canvasWrap {
+    flex: 1;
+    background: var(--canvas-bg);
+    position: relative;
+    overflow: hidden;
+  }
+  #mainCanvas {
+    display: block;
+    cursor: crosshair;
+  }
+  #mainCanvas.study-cursor { cursor: pointer; }
+
+  #statusBar {
+    padding: 6px 10px;
+    border-top: 1px solid var(--border);
+    background: #fafafa;
+    color: #444;
+    font-size: 12.5px;
+  }
+
+  #addImagesInput, #loadDeckInput { display: none; }
+
+  .hint {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    color: #666;
+    font-size: 13px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <button id="addImagesBtn">Add images…</button>
+    <button id="addFolderBtn">Add folder…</button>
+    <button id="removeCurrentBtn">Remove current</button>
+    <button id="removeSelectedFoldersBtn">Remove selected folders…</button>
+    <input type="file" id="addImagesInput" accept="image/*" multiple>
+    <input type="file" id="addFolderInput" webkitdirectory directory multiple>
+
+    <div class="sep"></div>
+
+    <button id="editModeBtn" class="toggle active">Edit boxes</button>
+    <button id="studyModeBtn" class="toggle">Study mode</button>
+
+    <div class="sep"></div>
+
+    <button id="prevBtn">◀ Prev</button>
+    <button id="nextBtn">Next ▶</button>
+
+    <div class="sep"></div>
+
+    <button id="autoDetectBtn">Auto-detect boxes</button>
+    <button id="autoDetectAllBtn">Auto-detect ALL (whole deck)</button>
+    <span class="toolbar-label">Sensitivity</span>
+    <input type="range" id="sensitivitySlider" min="5" max="40" value="15">
+    <button id="clearBoxesBtn">Clear boxes</button>
+    <button id="clearAllBoxesBtn">Clear ALL boxes (whole deck)</button>
+
+    <div class="sep"></div>
+
+    <button id="saveDeckBtn">Save deck…</button>
+    <button id="loadDeckBtn">Load deck…</button>
+    <input type="file" id="loadDeckInput" accept=".labeldeck,.json,application/json">
+  </div>
+
+  <div id="studyToolbar">
+    <button id="hideAllBtn">Hide all</button>
+    <button id="revealAllBtn">Reveal all</button>
+    <button id="hideAllDeckBtn">Hide ALL (whole deck)</button>
+  </div>
+
+  <div id="body">
+    <div id="sidebar">
+      <div id="sidebarHeader">
+        <h3>Cards</h3>
+        <div id="sidebarHeaderBtns">
+          <button id="expandAllFoldersBtn" class="small-btn">Expand all</button>
+          <button id="collapseAllFoldersBtn" class="small-btn">Collapse all</button>
+        </div>
+      </div>
+      <div id="sidebarHint">Check one or more folders below, then "Remove selected folders…" above.</div>
+      <div id="cardList"></div>
+    </div>
+    <div id="canvasWrap">
+      <canvas id="mainCanvas"></canvas>
+    </div>
+  </div>
+
+  <div id="statusBar">Add some images to get started.</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ===========================================================================
+  // Detection: isolate printed label text/leader-lines by color, then group
+  // glyph fragments into whole multi-word label boxes. This is a direct port
+  // of the same approach used in the desktop (Python/OpenCV) version of this
+  // tool, so it behaves the same way and was verified against it.
+  // ===========================================================================
+
+  function rgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const v = max;
+    const d = max - min;
+    const s = max === 0 ? 0 : d / max;
+    let h = 0;
+    if (d !== 0) {
+      switch (max) {
+        case r: h = ((g - b) / d) % 6; break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4; break;
+      }
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return [h, s, v];
+  }
+
+  function buildLabelColorMask(imageData, width, height) {
+    const data = imageData.data;
+    const n = width * height;
+    const hueArr = new Float32Array(n);
+    const satArr = new Float32Array(n);
+    const valArr = new Float32Array(n);
+    // A high saturation floor (150/255, not just "somewhat saturated")
+    // for the candidate pool matters a lot on photographic specimens:
+    // printed label text/overlay color is usually near-maximum, pure
+    // saturation, while skin/muscle/tissue tones - even where fairly
+    // vivid - rarely sustain that over a large area. On a busy photo
+    // the tissue can still out-*number* the label pixels, so without
+    // this floor the dominant-hue vote can be won by the photo's own
+    // color by a hair.
+    // The brightness (V) floor matters just as much: label print color
+    // is not just saturated but near-maximum BRIGHT (V close to 1),
+    // while even a richly-saturated photo color like dark red muscle
+    // tissue stays noticeably dimmer (well under 150/255) - a V>100/255
+    // floor let a large enough patch of dark, saturated tissue narrowly
+    // outvote a much smaller patch of actual label text on some images.
+    let candidateCount = 0;
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      const [h, s, v] = rgbToHsv(data[o], data[o + 1], data[o + 2]);
+      hueArr[i] = h; satArr[i] = s; valArr[i] = v;
+      if (s > 150 / 255 && v > 150 / 255) candidateCount++;
+    }
+
+    const mask = new Uint8Array(n);
+
+    if (candidateCount > 200) {
+      // Weight each candidate pixel's vote by its own saturation (not
+      // just counting it once) so a smaller pool of near-pure label
+      // color reliably outweighs a larger pool of moderately-saturated
+      // photo content, rather than the raw pixel count deciding it.
+      const hist = new Float64Array(180);
+      for (let i = 0; i < n; i++) {
+        if (satArr[i] > 150 / 255 && valArr[i] > 150 / 255) {
+          let bin = Math.floor(hueArr[i] / 2);
+          if (bin > 179) bin = 179;
+          if (bin < 0) bin = 0;
+          hist[bin] += satArr[i];
+        }
+      }
+      let peakBin = 0, peakVal = -1;
+      for (let i = 0; i < 180; i++) {
+        if (hist[i] > peakVal) { peakVal = hist[i]; peakBin = i; }
+      }
+      const peakHueDeg = peakBin * 2;
+      const lower = Math.max(peakHueDeg - 16, 0);
+      const upper = Math.min(peakHueDeg + 16, 359);
+      let maskSum = 0;
+      for (let i = 0; i < n; i++) {
+        if (hueArr[i] >= lower && hueArr[i] <= upper &&
+            satArr[i] > 150 / 255 && valArr[i] > 80 / 255) {
+          mask[i] = 1;
+          maskSum++;
+        }
+      }
+      if (maskSum > 0) return mask;
+    }
+
+    // Fallback for images with no dominant saturated color (e.g. plain
+    // black-text-on-white): grab the brightest ~3% of pixels.
+    const gray = new Float32Array(n);
+    const hist2 = new Float64Array(257);
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      const gval = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+      gray[i] = gval;
+      hist2[Math.min(255, Math.floor(gval))]++;
+    }
+    const target = 0.97 * (n - 1);
+    let cum = 0, threshVal = 255;
+    for (let v = 0; v < 256; v++) {
+      cum += hist2[v];
+      if (cum >= target + 1) { threshVal = v; break; }
+    }
+    for (let i = 0; i < n; i++) {
+      if (gray[i] >= threshVal) mask[i] = 1;
+    }
+    return mask;
+  }
+
+  function connectedComponents(mask, width, height) {
+    // Returns { components: [[minX,minY,w,h,area,compId], ...], labels: Int32Array }
+    // `labels` gives each pixel's owning component id (1-based; 0 = background),
+    // mirroring cv2.connectedComponentsWithStats, so leader-line components can
+    // later be probed for their own exact pixel membership.
+    const n = width * height;
+    const visited = new Uint8Array(n);
+    const labels = new Int32Array(n);
+    const stackX = new Int32Array(n);
+    const stackY = new Int32Array(n);
+    const components = [];
+    let nextId = 1;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        if (!mask[idx] || visited[idx]) continue;
+
+        const compId = nextId++;
+        let sp = 0;
+        stackX[sp] = x; stackY[sp] = y; sp++;
+        visited[idx] = 1;
+        labels[idx] = compId;
+        let minX = x, maxX = x, minY = y, maxY = y, area = 0;
+
+        while (sp > 0) {
+          sp--;
+          const cx = stackX[sp], cy = stackY[sp];
+          area++;
+          if (cx < minX) minX = cx;
+          if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy;
+          if (cy > maxY) maxY = cy;
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = cy + dy;
+            if (ny < 0 || ny >= height) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx;
+              if (nx < 0 || nx >= width) continue;
+              const nidx = ny * width + nx;
+              if (mask[nidx] && !visited[nidx]) {
+                visited[nidx] = 1;
+                labels[nidx] = compId;
+                stackX[sp] = nx; stackY[sp] = ny; sp++;
+              }
+            }
+          }
+        }
+        components.push([minX, minY, maxX - minX + 1, maxY - minY + 1, area, compId]);
+      }
+    }
+    return { components, labels };
+  }
+
+  function rectDistance(a, b) {
+    const dx = Math.max(b[0] - (a[0] + a[2]), a[0] - (b[0] + b[2]), 0);
+    const dy = Math.max(b[1] - (a[1] + a[3]), a[1] - (b[1] + b[3]), 0);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function mergeSameRowBoxes(inputBoxes, gapRatio, minGap, maxGapAbs, inputHasLine) {
+    // `inputHasLine`, if given, is an array (parallel to inputBoxes) of
+    // booleans: true means that box already has its own leader line
+    // matched to it elsewhere in the image. If BOTH boxes being
+    // considered for a merge already own a line, the merge is refused no
+    // matter how close the gap looks - a strong, shape-independent signal
+    // that they're two distinct labels sitting close together rather than
+    // one label split into fragments (a single gap-size threshold alone
+    // can't reliably tell those two cases apart). When two runs do merge,
+    // the combined run inherits hasLine as the OR of both.
+    let boxes = inputBoxes.map((b) => b.slice());
+    let hasLine = inputHasLine ? inputHasLine.slice() : boxes.map(() => false);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const n = boxes.length;
+      for (let i = 0; i < n; i++) {
+        if (!boxes[i]) continue;
+        let [ax, ay, aw, ah] = boxes[i];
+        for (let j = i + 1; j < n; j++) {
+          if (!boxes[j]) continue;
+          const [bx, by, bw, bh] = boxes[j];
+          const top = Math.max(ay, by), bottom = Math.min(ay + ah, by + bh);
+          const vertOverlap = Math.max(0, bottom - top);
+          const minH = Math.min(ah, bh), maxH = Math.max(ah, bh);
+          if (minH <= 0 || vertOverlap / minH < 0.4) continue;
+          if (maxH / minH > 2.2) continue;
+          if (hasLine[i] && hasLine[j]) continue;
+
+          let leftEdge, rightEdge;
+          if (ax <= bx) { leftEdge = ax + aw; rightEdge = bx; }
+          else { leftEdge = bx + bw; rightEdge = ax; }
+          const gap = rightEdge - leftEdge;
+          let threshold = Math.max(minGap, gapRatio * minH);
+          if (maxGapAbs != null) threshold = Math.min(threshold, maxGapAbs);
+
+          if (gap <= threshold) {
+            const nx = Math.min(ax, bx), ny = Math.min(ay, by);
+            const nx2 = Math.max(ax + aw, bx + bw), ny2 = Math.max(ay + ah, by + bh);
+            boxes[i] = [nx, ny, nx2 - nx, ny2 - ny];
+            hasLine[i] = hasLine[i] || hasLine[j];
+            boxes[j] = null;
+            changed = true;
+            [ax, ay, aw, ah] = boxes[i];
+          }
+        }
+      }
+      const keep = boxes.map((b) => b !== null);
+      boxes = boxes.filter((b) => b !== null);
+      hasLine = hasLine.filter((_, idx) => keep[idx]);
+    }
+    return { boxes, hasLine };
+  }
+
+  // hasLineIn: optional array (parallel to inputBoxes), same meaning and
+  // same protection as in mergeSameRowBoxes - if two boxes each already
+  // own their own independently-assigned leader line, never fuse them
+  // just because their bounding rectangles happen to touch or overlap.
+  // This matters for stacked multi-line labels: two neighboring two-line
+  // labels' bounding rectangles can overlap a little (or a stray bit of
+  // uncaught leader-line pixels can bridge them) even though the actual
+  // text never does, and without this check that overlap alone would be
+  // enough to wrongly fuse two, or a whole chain of, separate labels.
+  function mergeOverlappingBoxes(inputBoxes, hasLineIn) {
+    let boxes = inputBoxes.map((b) => b.slice());
+    let hasLine = hasLineIn ? hasLineIn.slice() : boxes.map(() => false);
+
+    function overlap(a, b) {
+      return !(a[0] + a[2] < b[0] || b[0] + b[2] < a[0] ||
+               a[1] + a[3] < b[1] || b[1] + b[3] < a[1]);
+    }
+    function union(a, b) {
+      const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]);
+      const x2 = Math.max(a[0] + a[2], b[0] + b[2]);
+      const y2 = Math.max(a[1] + a[3], b[1] + b[3]);
+      return [x, y, x2 - x, y2 - y];
+    }
+
+    let merged = true;
+    while (merged) {
+      merged = false;
+      const out = [];
+      const outHl = [];
+      const used = new Array(boxes.length).fill(false);
+      for (let i = 0; i < boxes.length; i++) {
+        if (used[i]) continue;
+        let cur = boxes[i];
+        let curHl = hasLine[i];
+        used[i] = true;
+        for (let j = i + 1; j < boxes.length; j++) {
+          if (used[j]) continue;
+          if (curHl && hasLine[j]) continue;
+          if (overlap(cur, boxes[j])) {
+            cur = union(cur, boxes[j]);
+            curHl = curHl || hasLine[j];
+            used[j] = true;
+            merged = true;
+          }
+        }
+        out.push(cur);
+        outHl.push(curHl);
+      }
+      boxes = out;
+      hasLine = outHl;
+    }
+    return boxes;
+  }
+
+  function detectLabelRegions(imageData, width, height, sensitivity) {
+    const mask = buildLabelColorMask(imageData, width, height);
+    const { components: comps, labels: ccLabels } = connectedComponents(mask, width, height);
+
+    // Estimate this image's typical letter height from components that
+    // are plausibly single letters (bounded width/height), so the
+    // vertical-line test below scales with the actual font size instead
+    // of a fixed pixel count - a fixed count can equal a normal letter's
+    // height in one image (wrongly stripping a tall stroke like "l" or
+    // "I") while being far too small to matter in another.
+    const letterLikeHeights = [];
+    for (const [, , w, h, area] of comps) {
+      if (w >= 3 && w <= 50 && h >= 6 && h <= 60 && area > 0) letterLikeHeights.push(h);
+    }
+    let typicalLetterH = 16;
+    if (letterLikeHeights.length) {
+      letterLikeHeights.sort((a, b) => a - b);
+      const mid = Math.floor(letterLikeHeights.length / 2);
+      typicalLetterH = letterLikeHeights.length % 2
+        ? letterLikeHeights[mid]
+        : (letterLikeHeights[mid - 1] + letterLikeHeights[mid]) / 2;
+    }
+
+    const glyphs = [];
+    const lines = []; // { compId, box }
+    for (const [x, y, w, h, area, compId] of comps) {
+      if (area <= 0) continue;
+      // Leader lines: flat/near-horizontal ones are caught by shape.
+      const isFlatH = h <= 6 && w >= Math.max(18, Math.floor(0.014 * width));
+      // A vertical leader line is much taller than any single letter
+      // stroke in this image, so scale the height floor to that rather
+      // than a fixed pixel count. Its width floor is scaled up a bit too
+      // (rather than a hard-coded 6px): two near-parallel leader lines
+      // running close together can fuse into one connected component
+      // that reads as a bit "fatter" than a single stroke, and a real
+      // letter essentially never reaches this height floor in the first
+      // place, so the height check alone already carries nearly all of
+      // the discriminating power here.
+      const isFlatV = w <= Math.max(14, Math.floor(0.8 * typicalLetterH)) && h >= Math.max(3 * typicalLetterH, 40);
+      // Leader lines at other angles (or several crossing/converging near
+      // an arrowhead) aren't "flat", but a real letter is a fairly solid
+      // blob that fills a good chunk of its own bounding box, while a
+      // thin line - straight or diagonal - only grazes a small fraction
+      // of its (much larger) bounding box. That density check catches
+      // them regardless of angle.
+      const fillRatio = area / (w * h);
+      const isSparseLine = (w >= 15 || h >= 15) && fillRatio < 0.18;
+      const box = [x, y, w, h];
+      if (isFlatH || isFlatV || isSparseLine) {
+        lines.push({ compId, box });
+      } else {
+        glyphs.push(box);
+      }
+    }
+
+    // Stage 1: fuse glyph fragments (dots, stems, disconnected letter
+    // parts) into whole letters using a tight, fixed gap. Line
+    // association doesn't matter yet at this scale.
+    const stage1 = mergeSameRowBoxes(glyphs, 0.9, 4, 7);
+    const letters = stage1.boxes;
+
+    // Assign each leader line to its single nearest letter-run, so we
+    // know which runs already have their own dedicated line pointing at
+    // something in the image. Several leader lines can visually cross or
+    // converge near an arrowhead and end up as ONE connected component,
+    // so its full bounding box can sprawl across multiple labels' worth
+    // of width - using that whole box would wrongly credit a "shared"
+    // line to every run it happens to span. Instead, probe just the
+    // topmost slice of the component's OWN pixels (its actual attachment
+    // point closest to the text above it, before it fans out or tangles
+    // with others) and use that narrow x-range to find the one
+    // letter-run it really belongs to.
+    const hasLine = letters.map(() => false);
+    const lineAssignRadius = Math.max(40, Math.floor(0.03 * Math.max(width, height)));
+    for (const { compId, box: lineBox } of lines) {
+      const [lx, ly, lw, lh] = lineBox;
+      const probeH = Math.min(20, lh);
+      let minCol = null, maxCol = null;
+      for (let yy = ly; yy < ly + probeH; yy++) {
+        for (let xx = lx; xx < lx + lw; xx++) {
+          if (ccLabels[yy * width + xx] === compId) {
+            const col = xx - lx;
+            if (minCol === null || col < minCol) minCol = col;
+            if (maxCol === null || col > maxCol) maxCol = col;
+          }
+        }
+      }
+      let probeBox;
+      if (minCol !== null) {
+        probeBox = [lx + minCol, ly, maxCol - minCol + 1, probeH];
+      } else {
+        probeBox = lineBox;
+      }
+      let bestIdx = null, bestDist = null;
+      for (let idx = 0; idx < letters.length; idx++) {
+        const d = rectDistance(probeBox, letters[idx]);
+        if (bestDist === null || d < bestDist) { bestDist = d; bestIdx = idx; }
+      }
+      if (bestIdx !== null && bestDist <= lineAssignRadius) hasLine[bestIdx] = true;
+    }
+
+    // Stage 2: fuse letters into words, and words into full phrases. Gap
+    // tolerance is generous here (bridges normal word-spacing, including
+    // parenthetical asides) because the hasLine check above is what
+    // actually prevents fusing two DIFFERENT labels that just happen to
+    // sit close together on the same row.
+    const gapRatio = Math.max(0.6, sensitivity / 6.5);
+    const stage2 = mergeSameRowBoxes(letters, gapRatio, 10, null, hasLine);
+    let boxes = stage2.boxes;
+    boxes = mergeOverlappingBoxes(boxes, stage2.hasLine);
+
+    const imgArea = width * height;
+    const final = [];
+    for (const [x, y, w, h] of boxes) {
+      const area = w * h;
+      if (area < 0.00012 * imgArea || area > 0.15 * imgArea) continue;
+      if (w < 10 || h < 8) continue;
+      final.push([x, y, w, h]);
+    }
+    return final;
+  }
+
+  // ===========================================================================
+  // Application state & UI
+  // ===========================================================================
+
+  const els = {
+    addImagesBtn: document.getElementById("addImagesBtn"),
+    addImagesInput: document.getElementById("addImagesInput"),
+    addFolderBtn: document.getElementById("addFolderBtn"),
+    addFolderInput: document.getElementById("addFolderInput"),
+    removeCurrentBtn: document.getElementById("removeCurrentBtn"),
+    removeSelectedFoldersBtn: document.getElementById("removeSelectedFoldersBtn"),
+    editModeBtn: document.getElementById("editModeBtn"),
+    studyModeBtn: document.getElementById("studyModeBtn"),
+    autoDetectBtn: document.getElementById("autoDetectBtn"),
+    autoDetectAllBtn: document.getElementById("autoDetectAllBtn"),
+    sensitivitySlider: document.getElementById("sensitivitySlider"),
+    clearBoxesBtn: document.getElementById("clearBoxesBtn"),
+    clearAllBoxesBtn: document.getElementById("clearAllBoxesBtn"),
+    saveDeckBtn: document.getElementById("saveDeckBtn"),
+    loadDeckBtn: document.getElementById("loadDeckBtn"),
+    loadDeckInput: document.getElementById("loadDeckInput"),
+    studyToolbar: document.getElementById("studyToolbar"),
+    prevBtn: document.getElementById("prevBtn"),
+    nextBtn: document.getElementById("nextBtn"),
+    hideAllBtn: document.getElementById("hideAllBtn"),
+    revealAllBtn: document.getElementById("revealAllBtn"),
+    hideAllDeckBtn: document.getElementById("hideAllDeckBtn"),
+    sidebar: document.getElementById("sidebar"),
+    cardList: document.getElementById("cardList"),
+    expandAllFoldersBtn: document.getElementById("expandAllFoldersBtn"),
+    collapseAllFoldersBtn: document.getElementById("collapseAllFoldersBtn"),
+    canvasWrap: document.getElementById("canvasWrap"),
+    canvas: document.getElementById("mainCanvas"),
+    statusBar: document.getElementById("statusBar"),
+  };
+  const ctx = els.canvas.getContext("2d");
+
+  const state = {
+    cards: [],        // { name, dataURL, img, width, height, boxes: [[x,y,w,h],...], revealed: Set }
+    currentIndex: -1,
+    mode: "edit",      // "edit" | "study"
+    // Each card carries its own `revealed` Set (which box indices are
+    // uncovered in Study Mode) so progress persists as you move between
+    // cards - see loadImageFile / deck-load below for where it's set.
+    // Folder paths (e.g. "MySet/Leg") the person has manually collapsed
+    // in the sidebar tree, so re-rendering the list on every change
+    // doesn't keep snapping folders back open.
+    collapsedFolders: new Set(),
+    // Folder paths checked in the sidebar for bulk removal (see the
+    // "Remove selected folders…" button below).
+    foldersMarkedForRemoval: new Set(),
+    scale: 1,
+    dragStart: null,
+    dragCurrent: null,
+  };
+
+  function setStatus(text) { els.statusBar.textContent = text; }
+
+  // ---------------------------------------------------------------------
+  // Crash / accidental-reload recovery
+  //
+  // A browser tab can go away without warning (an accidental Ctrl+R, a
+  // crashed tab, closing the wrong tab) and losing unsaved work is much
+  // more painful here than in most pages, since "unsaved work" can mean
+  // a whole deck of hand-placed boxes. To guard against that, the full
+  // deck (images, boxes, folders) is mirrored into the browser's own
+  // IndexedDB storage after every meaningful change, entirely on this
+  // device - nothing leaves the browser. On next load, if a mirrored
+  // session is found, the person is offered the chance to restore it.
+  // This is a safety net, not a replacement for "Save deck…": it only
+  // protects this browser, on this device, until it's cleared.
+  // ---------------------------------------------------------------------
+
+  const AUTOSAVE_DB = "labelDeckStudioAutosave";
+  const AUTOSAVE_STORE = "session";
+  const AUTOSAVE_KEY = "current";
+
+  function openAutosaveDB() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+      const req = indexedDB.open(AUTOSAVE_DB, 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains(AUTOSAVE_STORE)) {
+          req.result.createObjectStore(AUTOSAVE_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function writeAutosave(data) {
+    try {
+      const db = await openAutosaveDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(AUTOSAVE_STORE, "readwrite");
+        tx.objectStore(AUTOSAVE_STORE).put(data, AUTOSAVE_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.warn("Autosave failed (continuing without it):", err);
+    }
+  }
+
+  async function readAutosave() {
+    try {
+      const db = await openAutosaveDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(AUTOSAVE_STORE, "readonly");
+        const req = tx.objectStore(AUTOSAVE_STORE).get(AUTOSAVE_KEY);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function clearAutosave() {
+    try {
+      const db = await openAutosaveDB();
+      const tx = db.transaction(AUTOSAVE_STORE, "readwrite");
+      tx.objectStore(AUTOSAVE_STORE).delete(AUTOSAVE_KEY);
+    } catch (err) {
+      // Nothing to clean up if the DB never opened.
+    }
+  }
+
+  let autosaveTimer = null;
+  function scheduleAutosave() {
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      autosaveTimer = null;
+      if (!state.cards.length) {
+        clearAutosave();
+        return;
+      }
+      writeAutosave({
+        savedAt: Date.now(),
+        currentIndex: state.currentIndex,
+        cards: state.cards.map((c) => ({
+          name: c.name,
+          folder: c.folder || "",
+          image_png_b64: c.dataURL.split(",")[1],
+          boxes: c.boxes,
+        })),
+      });
+    }, 600);
+  }
+
+  async function offerAutosaveRestore() {
+    const saved = await readAutosave();
+    if (!saved || !saved.cards || !saved.cards.length) return;
+    const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : "earlier";
+    const wantsRestore = confirm(
+      `It looks like your last session ended without saving (maybe a reload or a closed tab).\n\n` +
+      `Restore ${saved.cards.length} card(s) from ${when}?\n\n` +
+      `Choose Cancel to discard it and start fresh.`
+    );
+    if (!wantsRestore) {
+      await clearAutosave();
+      return;
+    }
+    const restored = [];
+    for (const d of saved.cards) {
+      try {
+        const dataURL = `data:image/png;base64,${d.image_png_b64}`;
+        const img = await loadImageFromDataURL(dataURL);
+        restored.push({
+          name: d.name || "card",
+          folder: d.folder || "",
+          dataURL, img,
+          width: img.naturalWidth, height: img.naturalHeight,
+          boxes: (d.boxes || []).map((b) => b.slice()),
+          revealed: new Set(),
+        });
+      } catch (err) {
+        // Skip any card whose image data didn't decode cleanly.
+      }
+    }
+    if (!restored.length) return;
+    state.cards = restored;
+    state.currentIndex = Math.min(Math.max(saved.currentIndex || 0, 0), restored.length - 1);
+    refreshCardList();
+    render();
+    setStatus(`Restored ${restored.length} card(s) from your last session.`);
+  }
+
+  window.addEventListener("beforeunload", (e) => {
+    if (state.cards.length) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  function currentCard() {
+    return state.currentIndex >= 0 && state.currentIndex < state.cards.length
+      ? state.cards[state.currentIndex]
+      : null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas sizing & rendering
+  // ---------------------------------------------------------------------
+
+  function resizeCanvasToContainer() {
+    const cssW = els.canvasWrap.clientWidth;
+    const cssH = els.canvasWrap.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    els.canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    els.canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    els.canvas.style.width = cssW + "px";
+    els.canvas.style.height = cssH + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function render() {
+    resizeCanvasToContainer();
+    const cw = els.canvasWrap.clientWidth;
+    const ch = els.canvasWrap.clientHeight;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const card = currentCard();
+    els.canvas.classList.toggle("study-cursor", state.mode === "study");
+
+    if (!card) {
+      ctx.fillStyle = "#666666";
+      ctx.font = "14px sans-serif";
+      ctx.textBaseline = "top";
+      ctx.fillText("Add an image (top-left) to get started.", 20, 20);
+      return;
+    }
+
+    const iw = card.width, ih = card.height;
+    state.scale = Math.min(cw / iw, ch / ih, 1) || 1;
+    const dispW = iw * state.scale, dispH = ih * state.scale;
+
+    ctx.drawImage(card.img, 0, 0, dispW, dispH);
+
+    card.boxes.forEach((box, idx) => {
+      const [x, y, w, h] = box;
+      const dx = x * state.scale, dy = y * state.scale;
+      const dw = w * state.scale, dh = h * state.scale;
+
+      if (state.mode === "edit") {
+        ctx.fillStyle = "rgba(31,111,178,0.27)";
+        ctx.fillRect(dx, dy, dw, dh);
+        ctx.strokeStyle = "#1f6fb2";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dx, dy, dw, dh);
+      } else {
+        if (card.revealed.has(idx)) {
+          // Outset the outline rather than drawing it exactly on the
+          // box's edge: auto-detected boxes fit the text tightly, so a
+          // border drawn right on that boundary lands on top of the
+          // outermost letters (ascenders, the first/last character) and
+          // makes the label harder to read. Pushing it outward a few
+          // pixels keeps the highlight visible without ever covering
+          // the text itself.
+          const pad = Math.max(4, Math.round(0.12 * dh));
+          ctx.save();
+          ctx.setLineDash([3, 2]);
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(dx - pad, dy - pad, dw + pad * 2, dh + pad * 2);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = "#2c3e50";
+          ctx.fillRect(dx, dy, dw, dh);
+        }
+      }
+    });
+
+    if (state.mode === "edit" && state.dragStart && state.dragCurrent) {
+      const x0 = state.dragStart.x, y0 = state.dragStart.y;
+      const x1 = state.dragCurrent.x, y1 = state.dragCurrent.y;
+      ctx.save();
+      ctx.setLineDash([4, 2]);
+      ctx.strokeStyle = "#1f6fb2";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+      ctx.restore();
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Card list
+  // ---------------------------------------------------------------------
+
+  function buildFolderTree() {
+    // Groups card indices by their (possibly multi-level) folder path,
+    // preserving folder structure for display without disturbing
+    // state.cards' own order (which drives study-mode prev/next).
+    const root = { children: new Map(), cardIndices: [] };
+    state.cards.forEach((c, idx) => {
+      const parts = c.folder ? c.folder.split("/").filter(Boolean) : [];
+      let node = root;
+      for (const p of parts) {
+        if (!node.children.has(p)) {
+          node.children.set(p, { children: new Map(), cardIndices: [] });
+        }
+        node = node.children.get(p);
+      }
+      node.cardIndices.push(idx);
+    });
+    return root;
+  }
+
+  function renderTreeNode(node, depth, container, pathParts) {
+    const indent = 8 + depth * 14;
+    const folderNames = Array.from(node.children.keys()).sort((a, b) => a.localeCompare(b));
+    for (const name of folderNames) {
+      const childPathParts = pathParts.concat([name]);
+      const pathKey = childPathParts.join("/");
+      const collapsed = state.collapsedFolders.has(pathKey);
+      const markedForRemoval = state.foldersMarkedForRemoval.has(pathKey);
+      const header = document.createElement("div");
+      header.className = "folder-item";
+      header.style.paddingLeft = indent + "px";
+      header.innerHTML =
+        `<input type="checkbox" class="folder-remove-check" ${markedForRemoval ? "checked" : ""} ` +
+        `title="Select for removal"><span class="twisty">${collapsed ? "▶" : "▼"}</span>\u{1F4C1} ${name}`;
+      header.title = collapsed ? "Click to expand" : "Click to collapse";
+      const checkbox = header.querySelector(".folder-remove-check");
+      checkbox.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (checkbox.checked) state.foldersMarkedForRemoval.add(pathKey);
+        else state.foldersMarkedForRemoval.delete(pathKey);
+      });
+      header.addEventListener("click", () => {
+        if (collapsed) state.collapsedFolders.delete(pathKey);
+        else state.collapsedFolders.add(pathKey);
+        refreshCardList();
+      });
+      container.appendChild(header);
+      if (!collapsed) {
+        renderTreeNode(node.children.get(name), depth + 1, container, childPathParts);
+      }
+    }
+    for (const idx of node.cardIndices) {
+      const c = state.cards[idx];
+      const item = document.createElement("div");
+      item.className = "card-item" + (idx === state.currentIndex ? " selected" : "");
+      item.style.paddingLeft = indent + "px";
+      item.textContent = `${c.name}  (${c.boxes.length} boxes)`;
+      item.addEventListener("click", () => selectCard(idx));
+      container.appendChild(item);
+    }
+  }
+
+  function revealCurrentCardInSidebar() {
+    // Auto-expand any folder the CURRENT card sits inside, so
+    // navigating to it with Prev/Next (or arrow keys) never leaves it
+    // hidden - and looking unselected - inside a collapsed folder. Only
+    // called from actual navigation (not every refreshCardList), so it
+    // never fights the "Collapse all" button when the current card
+    // happens to be inside a folder you just collapsed on purpose.
+    const current = currentCard();
+    if (current && current.folder) {
+      const parts = current.folder.split("/").filter(Boolean);
+      let acc = [];
+      for (const p of parts) {
+        acc.push(p);
+        state.collapsedFolders.delete(acc.join("/"));
+      }
+    }
+  }
+
+  function refreshCardList() {
+    els.cardList.innerHTML = "";
+    renderTreeNode(buildFolderTree(), 0, els.cardList, []);
+
+    // Keep the highlighted card visible even if the sidebar is
+    // scrolled elsewhere - otherwise the selection can be correct but
+    // simply off-screen, which looks identical to "nothing selected".
+    const selectedEl = els.cardList.querySelector(".card-item.selected");
+    if (selectedEl) selectedEl.scrollIntoView({ block: "nearest" });
+  }
+
+  function collectAllFolderPaths(node, pathParts, out) {
+    for (const [name, child] of node.children) {
+      const childPathParts = pathParts.concat([name]);
+      out.push(childPathParts.join("/"));
+      collectAllFolderPaths(child, childPathParts, out);
+    }
+    return out;
+  }
+
+  els.collapseAllFoldersBtn.addEventListener("click", () => {
+    state.collapsedFolders = new Set(collectAllFolderPaths(buildFolderTree(), [], []));
+    refreshCardList();
+  });
+  els.expandAllFoldersBtn.addEventListener("click", () => {
+    state.collapsedFolders = new Set();
+    refreshCardList();
+  });
+
+  function selectCard(idx) {
+    state.currentIndex = idx;
+    refreshCardList();
+    render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Image loading
+  // ---------------------------------------------------------------------
+
+  function loadImageFromDataURL(dataURL) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("could not decode image"));
+      img.src = dataURL;
+    });
+  }
+
+  function loadImageFile(file, folder) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const rawImg = await loadImageFromDataURL(reader.result);
+          // Normalize to PNG via an offscreen canvas.
+          const off = document.createElement("canvas");
+          off.width = rawImg.naturalWidth;
+          off.height = rawImg.naturalHeight;
+          off.getContext("2d").drawImage(rawImg, 0, 0);
+          const dataURL = off.toDataURL("image/png");
+          const normImg = await loadImageFromDataURL(dataURL);
+          const name = file.name.replace(/\.[^/.]+$/, "");
+          resolve({
+            name, dataURL, img: normImg,
+            width: normImg.naturalWidth, height: normImg.naturalHeight,
+            boxes: [],
+            folder: folder || "",
+            revealed: new Set(),
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("could not read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const IMAGE_EXT_RE = /\.(png|jpe?g|bmp|gif|webp)$/i;
+
+  // ---------------------------------------------------------------------
+  // Toolbar actions
+  // ---------------------------------------------------------------------
+
+  els.addImagesBtn.addEventListener("click", () => els.addImagesInput.click());
+  els.addImagesInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    let added = 0;
+    for (const file of files) {
+      try {
+        const card = await loadImageFile(file, "");
+        state.cards.push(card);
+        added++;
+      } catch (err) {
+        alert(`Could not open image: ${file.name}\n\n${err.message || err}`);
+      }
+    }
+    if (added) {
+      state.currentIndex = state.cards.length - 1;
+      refreshCardList();
+      render();
+      scheduleAutosave();
+    }
+    setStatus(`Added ${added} image(s).`);
+  });
+
+  els.addFolderBtn.addEventListener("click", () => els.addFolderInput.click());
+  els.addFolderInput.addEventListener("change", async (e) => {
+    // webkitdirectory gives back every file under the chosen folder
+    // (recursively), each carrying its path relative to that folder in
+    // webkitRelativePath (e.g. "MySet/Leg/femur.png"). We use that path
+    // - minus the filename - as the card's folder, so the deck's
+    // sidebar (and the saved deck) mirrors the on-disk structure,
+    // including the top-level folder name the person picked.
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const imageFiles = files.filter((f) => IMAGE_EXT_RE.test(f.name));
+    if (!imageFiles.length) {
+      alert("No image files were found in that folder.");
+      return;
+    }
+    let added = 0;
+    let failed = 0;
+    for (const file of imageFiles) {
+      const relPath = file.webkitRelativePath || file.name;
+      const parts = relPath.split("/");
+      const folder = parts.slice(0, -1).join("/"); // drop the filename itself
+      try {
+        const card = await loadImageFile(file, folder);
+        state.cards.push(card);
+        added++;
+      } catch (err) {
+        failed++;
+      }
+    }
+    if (added) {
+      state.currentIndex = state.cards.length - 1;
+      refreshCardList();
+      render();
+      scheduleAutosave();
+    }
+    let msg = `Added ${added} image(s) from folder.`;
+    if (failed) msg += ` (${failed} file(s) could not be opened.)`;
+    setStatus(msg);
+  });
+
+  els.removeCurrentBtn.addEventListener("click", () => {
+    if (state.currentIndex < 0) return;
+    state.cards.splice(state.currentIndex, 1);
+    state.currentIndex = Math.min(state.currentIndex, state.cards.length - 1);
+    refreshCardList();
+    render();
+    scheduleAutosave();
+  });
+
+  els.removeSelectedFoldersBtn.addEventListener("click", () => {
+    const marked = Array.from(state.foldersMarkedForRemoval);
+    if (!marked.length) {
+      alert("Check one or more folders in the sidebar first, then click this button.");
+      return;
+    }
+    // A card belongs to a marked folder if its own folder path is that
+    // folder or nested underneath it (so checking a parent folder also
+    // removes everything in its subfolders).
+    const toRemove = new Set();
+    state.cards.forEach((c, idx) => {
+      if (marked.some((prefix) => c.folder === prefix || c.folder.startsWith(prefix + "/"))) {
+        toRemove.add(idx);
+      }
+    });
+    if (!toRemove.size) {
+      state.foldersMarkedForRemoval = new Set();
+      refreshCardList();
+      return;
+    }
+    const detail = `This removes ${toRemove.size} card(s), including everything inside:\n${marked.join("\n")}`;
+    if (!confirm(`${detail}\n\nThis cannot be undone. Continue?`)) return;
+
+    const previousCurrentCard = currentCard();
+    state.cards = state.cards.filter((_, idx) => !toRemove.has(idx));
+    const survivingIndex = previousCurrentCard ? state.cards.indexOf(previousCurrentCard) : -1;
+    state.currentIndex = survivingIndex >= 0
+      ? survivingIndex
+      : (state.cards.length ? Math.min(state.currentIndex, state.cards.length - 1) : -1);
+    state.foldersMarkedForRemoval = new Set();
+    refreshCardList();
+    render();
+    setStatus(`Removed ${toRemove.size} card(s).`);
+    scheduleAutosave();
+  });
+
+  function setMode(mode) {
+    if (mode === "study" && state.cards.length === 0) {
+      alert("Add some images first.");
+      return;
+    }
+    state.mode = mode;
+    els.editModeBtn.classList.toggle("active", mode === "edit");
+    els.studyModeBtn.classList.toggle("active", mode === "study");
+    els.studyToolbar.style.display = mode === "study" ? "flex" : "none";
+    state.dragStart = null;
+    state.dragCurrent = null;
+    render();
+  }
+  els.editModeBtn.addEventListener("click", () => setMode("edit"));
+  els.studyModeBtn.addEventListener("click", () => setMode("study"));
+
+  els.autoDetectBtn.addEventListener("click", () => {
+    const card = currentCard();
+    if (!card) {
+      alert("Add and select an image first.");
+      return;
+    }
+    setStatus("Auto-detecting…");
+    // Let the status update paint before the (synchronous) detection work.
+    setTimeout(() => {
+      const sensitivity = parseInt(els.sensitivitySlider.value, 10);
+      const boxes = detectBoxesForCard(card, sensitivity);
+      card.boxes = boxes;
+      card.revealed = new Set();
+      refreshCardList();
+      render();
+      setStatus(`Auto-detected ${boxes.length} candidate box(es). Review and adjust as needed.`);
+      scheduleAutosave();
+    }, 10);
+  });
+
+  function detectBoxesForCard(card, sensitivity) {
+    const off = document.createElement("canvas");
+    off.width = card.width;
+    off.height = card.height;
+    const octx = off.getContext("2d");
+    octx.drawImage(card.img, 0, 0);
+    const imageData = octx.getImageData(0, 0, card.width, card.height);
+    const boxes = detectLabelRegions(imageData, card.width, card.height, sensitivity);
+    return boxes.map((b) => b.slice());
+  }
+
+  els.autoDetectAllBtn.addEventListener("click", () => {
+    if (!state.cards.length) {
+      alert("Add some images first.");
+      return;
+    }
+    if (!confirm(`Auto-detect boxes on all ${state.cards.length} card(s)? This replaces each card's existing boxes.`)) {
+      return;
+    }
+    const sensitivity = parseInt(els.sensitivitySlider.value, 10);
+    let i = 0;
+    // Process one card per tick (rather than all in a single synchronous
+    // pass) so the status text actually updates as it goes and the page
+    // doesn't appear to freeze on a big deck.
+    function step() {
+      if (i >= state.cards.length) {
+        refreshCardList();
+        render();
+        setStatus(`Auto-detected boxes on ${state.cards.length} card(s). Review and adjust as needed.`);
+        scheduleAutosave();
+        return;
+      }
+      const card = state.cards[i];
+      setStatus(`Auto-detecting… (${i + 1}/${state.cards.length}) ${card.name}`);
+      setTimeout(() => {
+        card.boxes = detectBoxesForCard(card, sensitivity);
+        card.revealed = new Set();
+        i++;
+        step();
+      }, 10);
+    }
+    step();
+  });
+
+  els.clearBoxesBtn.addEventListener("click", () => {
+    const card = currentCard();
+    if (!card) return;
+    if (card.boxes.length && !confirm("Remove all boxes on this card?")) return;
+    card.boxes = [];
+    card.revealed = new Set();
+    refreshCardList();
+    render();
+    scheduleAutosave();
+  });
+
+  els.clearAllBoxesBtn.addEventListener("click", () => {
+    if (!state.cards.length) return;
+    if (!state.cards.some((c) => c.boxes.length)) return;
+    if (!confirm("Remove all boxes on every card in the deck? This cannot be undone.")) return;
+    state.cards.forEach((c) => {
+      c.boxes = [];
+      c.revealed = new Set();
+    });
+    refreshCardList();
+    render();
+    setStatus("Cleared all boxes on every card.");
+    scheduleAutosave();
+  });
+
+  function suggestDeckFilename() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `deck-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.labeldeck`;
+  }
+
+  els.saveDeckBtn.addEventListener("click", () => {
+    if (!state.cards.length) {
+      alert("Add some images first.");
+      return;
+    }
+    const data = {
+      cards: state.cards.map((c) => ({
+        name: c.name,
+        folder: c.folder || "",
+        image_png_b64: c.dataURL.split(",")[1],
+        boxes: c.boxes,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = suggestDeckFilename();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus(`Saved deck as ${a.download}`);
+  });
+
+  els.loadDeckBtn.addEventListener("click", () => els.loadDeckInput.click());
+  els.loadDeckInput.addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const newCards = [];
+      for (const d of (data.cards || [])) {
+        const dataURL = `data:image/png;base64,${d.image_png_b64}`;
+        const img = await loadImageFromDataURL(dataURL);
+        newCards.push({
+          name: d.name || "card",
+          folder: d.folder || "",
+          dataURL, img,
+          width: img.naturalWidth, height: img.naturalHeight,
+          boxes: (d.boxes || []).map((b) => b.slice()),
+          revealed: new Set(),
+        });
+      }
+      state.cards = newCards;
+      state.currentIndex = state.cards.length ? 0 : -1;
+      refreshCardList();
+      render();
+      setStatus(`Loaded ${state.cards.length} card(s) from ${file.name}`);
+      scheduleAutosave();
+    } catch (err) {
+      alert(`Load failed: ${err.message || err}`);
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Study-mode toolbar
+  // ---------------------------------------------------------------------
+
+  els.prevBtn.addEventListener("click", () => {
+    if (!state.cards.length) return;
+    state.currentIndex = (state.currentIndex - 1 + state.cards.length) % state.cards.length;
+    revealCurrentCardInSidebar();
+    refreshCardList();
+    render();
+  });
+  els.nextBtn.addEventListener("click", () => {
+    if (!state.cards.length) return;
+    state.currentIndex = (state.currentIndex + 1) % state.cards.length;
+    revealCurrentCardInSidebar();
+    refreshCardList();
+    render();
+  });
+  els.hideAllBtn.addEventListener("click", () => {
+    // Re-covers every box on the CURRENT card only.
+    const card = currentCard();
+    if (card) card.revealed = new Set();
+    render();
+  });
+  els.revealAllBtn.addEventListener("click", () => {
+    // Reveals every box on the CURRENT card only.
+    const card = currentCard();
+    if (card) card.revealed = new Set(card.boxes.map((_, i) => i));
+    render();
+  });
+  els.hideAllDeckBtn.addEventListener("click", () => {
+    // Re-covers every box on EVERY card in the deck - including cards
+    // you haven't opened yet this session - so the whole deck can be
+    // reset to "fully hidden" in one click.
+    state.cards.forEach((c) => { c.revealed = new Set(); });
+    render();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+    // Card navigation works in both Edit and Study mode; Hide/Reveal
+    // only make sense in Study mode, so those stay gated to it.
+    if (e.key === "ArrowLeft") { els.prevBtn.click(); return; }
+    if (e.key === "ArrowRight") { els.nextBtn.click(); return; }
+    if (state.mode !== "study") return;
+    if (e.key === "h" || e.key === "H") els.hideAllBtn.click();
+    else if (e.key === "r" || e.key === "R") els.revealAllBtn.click();
+  });
+
+  // ---------------------------------------------------------------------
+  // Canvas interaction (box editing / study reveal)
+  // ---------------------------------------------------------------------
+
+  function getCanvasPos(e) {
+    const rect = els.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function hitBox(card, ximg, yimg) {
+    for (let idx = card.boxes.length - 1; idx >= 0; idx--) {
+      const [bx, by, bw, bh] = card.boxes[idx];
+      if (ximg >= bx && ximg <= bx + bw && yimg >= by && yimg <= by + bh) return idx;
+    }
+    return null;
+  }
+
+  els.canvas.addEventListener("mousedown", (e) => {
+    const card = currentCard();
+    if (!card) return;
+    const pos = getCanvasPos(e);
+    const ximg = pos.x / state.scale, yimg = pos.y / state.scale;
+    const hit = hitBox(card, ximg, yimg);
+
+    if (state.mode === "study") {
+      if (hit !== null) {
+        if (card.revealed.has(hit)) card.revealed.delete(hit);
+        else card.revealed.add(hit);
+        render();
+      }
+      return;
+    }
+
+    // edit mode
+    if (hit !== null) {
+      card.boxes.splice(hit, 1);
+      refreshCardList();
+      render();
+      scheduleAutosave();
+      return;
+    }
+    state.dragStart = pos;
+    state.dragCurrent = pos;
+  });
+
+  els.canvas.addEventListener("mousemove", (e) => {
+    if (state.mode !== "edit" || !state.dragStart) return;
+    state.dragCurrent = getCanvasPos(e);
+    render();
+  });
+
+  window.addEventListener("mouseup", (e) => {
+    if (state.mode !== "edit" || !state.dragStart) return;
+    const pos = getCanvasPos(e);
+    const x0 = state.dragStart.x, y0 = state.dragStart.y;
+    const x1 = pos.x, y1 = pos.y;
+    state.dragStart = null;
+    state.dragCurrent = null;
+
+    const left = Math.min(x0, x1), right = Math.max(x0, x1);
+    const top = Math.min(y0, y1), bottom = Math.max(y0, y1);
+    if ((right - left) < 6 || (bottom - top) < 6) {
+      render();
+      return;
+    }
+    const card = currentCard();
+    if (!card) { render(); return; }
+    const bx = left / state.scale, by = top / state.scale;
+    const bw = (right - left) / state.scale, bh = (bottom - top) / state.scale;
+    card.boxes.push([bx, by, bw, bh]);
+    refreshCardList();
+    render();
+    scheduleAutosave();
+  });
+
+  // ---------------------------------------------------------------------
+  // Resize handling & boot
+  // ---------------------------------------------------------------------
+
+  let resizeTimer = null;
+  function scheduleRender() {
+    if (resizeTimer) return;
+    resizeTimer = requestAnimationFrame(() => {
+      resizeTimer = null;
+      render();
+    });
+  }
+  window.addEventListener("resize", scheduleRender);
+  if (window.ResizeObserver) {
+    new ResizeObserver(scheduleRender).observe(els.canvasWrap);
+  }
+
+  refreshCardList();
+  render();
+  offerAutosaveRestore();
+
+  // Expose a couple of internals for automated testing/debugging.
+  window.__labelDeckStudio = {
+    state, detectLabelRegions,
+    _autosave: { readAutosave, writeAutosave, clearAutosave, offerAutosaveRestore },
+  };
+})();
+</script>
+</body>
+</html>
+
+
+<!--
+  Made by Ebin Sebastian
+-->
