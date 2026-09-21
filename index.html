@@ -9,6 +9,7 @@
   8.) Lets you see the highlighted card on the left
   9.) Label making improvements
   10.) Broadens file discovery so Ipad can recognize the file
+  11.) Updated so that you can draw the boxes on iPad
 -->
 
 <!DOCTYPE html>
@@ -152,6 +153,12 @@
   #mainCanvas {
     display: block;
     cursor: crosshair;
+    /* Without this, iOS Safari treats a finger-drag on the canvas as a
+       page scroll/pan gesture instead of handing it to our drawing
+       code, so box-drawing never gets a continuous drag on touch
+       devices. This tells the browser we're handling all gestures on
+       the canvas ourselves. */
+    touch-action: none;
   }
   #mainCanvas.study-cursor { cursor: pointer; }
 
@@ -1440,9 +1447,17 @@
     return null;
   }
 
-  els.canvas.addEventListener("mousedown", (e) => {
+  // Pointer Events (not mouse events) so this works the same with a
+  // mouse, a finger, or an Apple Pencil - Safari on iPad doesn't
+  // reliably fire mouse events for a drag gesture on canvas, which is
+  // why box-drawing didn't work there before. setPointerCapture keeps
+  // the drag "attached" to the canvas even if a fast finger/pencil
+  // stroke briefly slips past its edge.
+  els.canvas.addEventListener("pointerdown", (e) => {
     const card = currentCard();
     if (!card) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    els.canvas.setPointerCapture(e.pointerId);
     const pos = getCanvasPos(e);
     const ximg = pos.x / state.scale, yimg = pos.y / state.scale;
     const hit = hitBox(card, ximg, yimg);
@@ -1468,13 +1483,13 @@
     state.dragCurrent = pos;
   });
 
-  els.canvas.addEventListener("mousemove", (e) => {
+  els.canvas.addEventListener("pointermove", (e) => {
     if (state.mode !== "edit" || !state.dragStart) return;
     state.dragCurrent = getCanvasPos(e);
     render();
   });
 
-  window.addEventListener("mouseup", (e) => {
+  els.canvas.addEventListener("pointerup", (e) => {
     if (state.mode !== "edit" || !state.dragStart) return;
     const pos = getCanvasPos(e);
     const x0 = state.dragStart.x, y0 = state.dragStart.y;
@@ -1528,6 +1543,7 @@
 </script>
 </body>
 </html>
+
 
 <!--
   Made by Ebin Sebastian
