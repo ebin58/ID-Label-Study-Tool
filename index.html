@@ -11,7 +11,9 @@
   10.) Broadens file discovery so Ipad can recognize the file
   11.) Updated so that you can draw the boxes on iPad
   12.) Added a box saying draw boxes so that you can draw boxes. Then click on it again to exit out of the draw mode
+  13.) Made it so that next and prev go in order of the folders and not when the pictures were put in.
 -->
+
 
 
 <!DOCTYPE html>
@@ -974,6 +976,24 @@
     return root;
   }
 
+  // Card indices in the same order the sidebar tree actually displays
+  // them: subfolders depth-first in alphabetical order, then this
+  // folder's own cards - mirroring renderTreeNode's traversal exactly,
+  // so Prev/Next walks the list the way it visually reads on screen.
+  function getVisualOrder() {
+    const root = buildFolderTree();
+    const order = [];
+    function walk(node) {
+      const folderNames = Array.from(node.children.keys()).sort((a, b) => a.localeCompare(b));
+      for (const name of folderNames) {
+        walk(node.children.get(name));
+      }
+      for (const idx of node.cardIndices) order.push(idx);
+    }
+    walk(root);
+    return order;
+  }
+
   function renderTreeNode(node, depth, container, pathParts) {
     const indent = 8 + depth * 14;
     const folderNames = Array.from(node.children.keys()).sort((a, b) => a.localeCompare(b));
@@ -1411,16 +1431,28 @@
   // Study-mode toolbar
   // ---------------------------------------------------------------------
 
+  // Prev/Next step through cards in the same folder-grouped order the
+  // sidebar displays them in (see getVisualOrder), not in state.cards'
+  // own raw insertion order - otherwise "last picture in a folder" ->
+  // Next can land on a card that's next in the underlying array but
+  // visually lives in a completely different folder, which is
+  // confusing since nothing about the sidebar suggested that jump.
   els.prevBtn.addEventListener("click", () => {
     if (!state.cards.length) return;
-    state.currentIndex = (state.currentIndex - 1 + state.cards.length) % state.cards.length;
+    const order = getVisualOrder();
+    const pos = order.indexOf(state.currentIndex);
+    const newPos = (pos - 1 + order.length) % order.length;
+    state.currentIndex = order[newPos];
     revealCurrentCardInSidebar();
     refreshCardList();
     render();
   });
   els.nextBtn.addEventListener("click", () => {
     if (!state.cards.length) return;
-    state.currentIndex = (state.currentIndex + 1) % state.cards.length;
+    const order = getVisualOrder();
+    const pos = order.indexOf(state.currentIndex);
+    const newPos = (pos + 1) % order.length;
+    state.currentIndex = order[newPos];
     revealCurrentCardInSidebar();
     refreshCardList();
     render();
